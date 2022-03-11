@@ -1,17 +1,21 @@
 import torch
 import torch.nn as nn
 
+#N= batch size, ie the no. of sentence pairs in a batch
+#src_len= length of the src sentences, padding= 0
+#query_len, key_len, value_len= src/trg sentence length depending on wheather used in encoder or decoder
+
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_emb, heads):
         '''
         d_emb= embedding dim (same as d_model in the paper)
-        heads= no. of diff heads in the layer
+        heads= no. of diff heads in the multi- attention layer
         '''
         super(MultiHeadAttention, self).__init__()
         self.d_emb= d_emb
         self.heads= heads
         assert d_emb % heads== 0
-        #dim of each head
+        #dim of each head, to be concatenated later
         self.head_dim= d_emb// heads
         
         self.fc_q= nn.Linear(self.d_emb, self.d_emb)
@@ -45,11 +49,11 @@ class MultiHeadAttention(nn.Module):
         
         #attention_weights shape= N x heads x query_len x key_len
         #value shape= N x value_len x heads x heads_dim
-        # out shape= N x query_len x heads x heads_dim
-        # out shape= N x query_len x d_emb (concatinating heads)
+        #out shape= N x query_len x heads x heads_dim
+        #out shape= N x query_len x d_emb (concatinating heads)
         out= torch.einsum('nhqk, nvhd-> nqhd', [attention_weights, value]).reshape(N, query_len, -1)
         out= self.fc_o(out)
-        return out, attention_weights
+        return out
         
         
 class PositionwiseFeedForwardLayer(nn.Module):
@@ -81,11 +85,11 @@ class EncoderBlock(nn.Module):
         '''
         src_mask= prevents encoder from attending to <pad> tokens
         '''
-        out_sa, _= self.self_attention(src, src, src, src_mask)
+        out_sa= self.self_attention(src, src, src, src_mask)
         out_sa= self.norm1(src+ self.dropout(out_sa))
         
         out= self.positionwise_ffn(out_sa)
-        out= self.norm2(out_sa+ self.dropout(out_sa))
+        out= self.norm2(out_sa+ self.dropout(out))
         return out
 
 class Encoder(nn.Module):
@@ -119,13 +123,14 @@ class DecoderBlock(nn.Module):
         
         self.positionwise_ffn= PositionwiseFeedForwardLayer(d_emb, d_ff)
         self.norm3= nn.LayerNorm(d_emb)
+        
         self.dropout= nn.Dropout(p= dropout)
         
     def forward(self, trg, trg_mask, encoded_src, src_mask):
-        out_msa, _= self.masked_self_attention(trg, trg, trg, trg_mask)
+        out_msa= self.masked_self_attention(trg, trg, trg, trg_mask)
         out_msa= self.norm1(trg+ self.dropout(out_msa))
         
-        out_ca, _= self.cross_attention(out_msa, encoded_src, encoded_src, src_mask)
+        out_ca= self.cross_attention(out_msa, encoded_src, encoded_src, src_mask)
         out_ca= self.norm2(out_msa+ self.dropout(out_ca))
         
         out= self.positionwise_ffn(out_ca)
@@ -199,12 +204,17 @@ class Transformer(nn.Module):
     
     
 if __name__ == "__main__":
-    x = torch.tensor([[1, 5, 6, 4, 3, 9, 5, 2, 0], [1, 8, 7, 3, 4, 5, 6, 7, 2]])
-    trg = torch.tensor([[1, 7, 4, 3, 5, 9, 2, 0], [1, 5, 6, 2, 4, 7, 6, 2]])
+    #depends in the tokenizer
+    src_vocab_size = 50
+    trg_vocab_size = 50
+    
+    x= torch.randint(0, 50, (5, 20))
+    trg= torch.randint(0, 50, (5, 20))
+    
     src_pad_idx = 0
     trg_pad_idx = 0
-    src_vocab_size = 10
-    trg_vocab_size = 10
+    
     model = Transformer(src_vocab_size, trg_vocab_size, src_pad_idx, trg_pad_idx)
+    #target offset by 1 in addition to masked self attention to avoid info. leak
     out = model(x, trg[:, :-1])
     print(out.shape)
