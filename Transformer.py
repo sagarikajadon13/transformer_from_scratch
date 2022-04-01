@@ -204,7 +204,7 @@ class Transformer(nn.Module):
     
     
 if __name__ == "__main__":
-    #depends in the tokenizer
+    #depends on the tokenizer
     src_vocab_size = 50
     trg_vocab_size = 50
     
